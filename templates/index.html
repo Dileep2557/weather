@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Weather App (Python Backend)</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+</head>
+
+<body class="bg-gray-100">
+    <div class="container">
+        <h1 class="text-2xl font-bold mb-4">Simple Weather App (Python Backend)</h1>
+        <div class="absolute top-4 right-4 z-20 flex gap-2 bg-white bg-opacity-90 rounded shadow p-2">
+            <input type="text" id="cityInput" placeholder="Search location..." class="p-2 border rounded w-40">
+            <button id="getWeatherBtn" class="bg-blue-500 text-white px-4 py-2 rounded">Search</button>
+        </div>
+        <!-- ...existing code... -->
+    </div>
+
+    <div id="map" class="fixed inset-0 z-0"></div>
+    <div id="weatherPanel"
+        class="fixed right-0 top-0 h-full w-full sm:w-96 bg-white shadow-lg transform translate-x-full transition-transform duration-300 z-10 flex flex-col items-center justify-center p-6">
+        <div id="weatherIcon" class="text-6xl mb-2"></div>
+        <h2 id="panelLocation" class="text-xl font-bold mb-2"></h2>
+        <p id="panelTemp" class="mb-1"></p>
+        <p id="panelCondition" class="mb-1"></p>
+        <p id="panelWind" class="mb-1"></p>
+        <p id="panelHumidity" class="mb-1"></p>
+        <canvas id="weatherChart" width="250" height="120" class="my-2"></canvas>
+        <button onclick="closePanel()" class="mt-4 px-4 py-2 bg-blue-500 text-white rounded w-full">Close</button>
+    </div>
+
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        const map = L.map('map').setView([20, 0], 2);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OSM' }).addTo(map);
+
+        map.on('click', async function (e) {
+            const { lat, lng } = e.latlng;
+            try {
+                const weather = await fetchWeather(lat, lng);
+                showWeatherPanel(weather, lat, lng);
+            } catch (err) {
+                showErrorPanel('Unable to fetch weather data. Please check your API key and network connection.');
+            }
+        });
+
+        document.getElementById('getWeatherBtn').addEventListener('click', async function () {
+            const location = document.getElementById('cityInput').value.trim();
+            if (!location) return;
+            try {
+                const coords = await geocodeLocation(location);
+                if (!coords) {
+                    showErrorPanel('Location not found.');
+                    return;
+                }
+                map.setView([coords.lat, coords.lon], 10);
+                L.marker([coords.lat, coords.lon]).addTo(map);
+                const weather = await fetchWeather(coords.lat, coords.lon);
+                showWeatherPanel(weather, coords.lat, coords.lon);
+            } catch (err) {
+                showErrorPanel('Unable to fetch weather data for searched location.');
+            }
+        });
+
+        async function geocodeLocation(location) {
+            // Use OpenStreetMap Nominatim API for geocoding
+            const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(location)}`;
+            try {
+                const res = await fetch(url);
+                const data = await res.json();
+                if (data && data.length > 0) {
+                    return { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) };
+                }
+                return null;
+            } catch (err) {
+                return null;
+            }
+        }
+
+        async function fetchWeather(lat, lon) {
+            const apiKey = '62a2909a72375a38d81fa94b4d376bdf';
+            const url = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&units=metric&appid=${apiKey}`;
+            try {
+                const res = await fetch(url);
+                if (!res.ok) throw new Error('API error');
+                return await res.json();
+            } catch (err) {
+                throw new Error('Network or API error');
+            }
+        }
+
+        function showErrorPanel(message) {
+            document.getElementById('panelLocation').textContent = '';
+            document.getElementById('panelTemp').textContent = '';
+            document.getElementById('panelCondition').textContent = '';
+            document.getElementById('panelWind').textContent = '';
+            document.getElementById('panelHumidity').textContent = '';
+            document.getElementById('weatherIcon').innerHTML = '';
+            document.getElementById('weatherPanel').style.transform = 'translateX(0)';
+            document.getElementById('weatherChart').getContext('2d').clearRect(0, 0, 250, 120);
+            document.getElementById('panelLocation').textContent = message;
+        }
+
+        function showWeatherPanel(data, lat, lon) {
+            document.getElementById('panelLocation').textContent = `${data.name || 'Unknown'}, [${lat.toFixed(2)}, ${lon.toFixed(2)}]`;
+            document.getElementById('panelTemp').textContent = `Temperature: ${data.main.temp}°C`;
+            document.getElementById('panelCondition').textContent = `Condition: ${data.weather[0].main}`;
+            document.getElementById('panelWind').textContent = `Wind: ${data.wind.speed} m/s`;
+            document.getElementById('panelHumidity').textContent = `Humidity: ${data.main.humidity}%`;
+            document.getElementById('weatherIcon').innerHTML = getWeatherIcon(data.weather[0].main);
+            document.getElementById('weatherPanel').style.transform = 'translateX(0)';
+            animateChart([data.main.temp - 2, data.main.temp - 1, data.main.temp, data.main.temp + 1, data.main.temp + 2]);
+        }
+
+        function closePanel() {
+            document.getElementById('weatherPanel').style.transform = 'translateX(100%)';
+        }
+
+        function getWeatherIcon(condition) {
+            switch (condition) {
+                case 'Clear': return '☀️';
+                case 'Rain': return '🌧️';
+                case 'Clouds': return '☁️';
+                case 'Snow': return '❄️';
+                case 'Thunderstorm': return '⛈️';
+                case 'Drizzle': return '🌦️';
+                case 'Mist': return '🌫️';
+                default: return '🌡️';
+            }
+        }
+
+        function animateChart(temps) {
+            const ctx = document.getElementById('weatherChart').getContext('2d');
+            if (window.weatherChartInstance) window.weatherChartInstance.destroy();
+            window.weatherChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: ['-2h', '-1h', 'Now', '+1h', '+2h'],
+                    datasets: [{
+                        label: 'Temperature Trend',
+                        data: temps,
+                        borderColor: '#3b82f6',
+                        backgroundColor: 'rgba(59,130,246,0.2)',
+                        fill: true,
+                        tension: 0.4
+                    }]
+                },
+                options: { animation: { duration: 1000 }, responsive: true }
+            });
+        }
+    </script>
+</body>
+
+</html>
